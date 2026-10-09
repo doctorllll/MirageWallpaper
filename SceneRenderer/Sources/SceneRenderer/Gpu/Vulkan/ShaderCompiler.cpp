@@ -9,6 +9,7 @@ module;
 
 #include <cstdio>
 #include <cstdlib>
+#include <mutex>
 #include <fcntl.h>
 #include <unistd.h>
 
@@ -325,8 +326,15 @@ bool sr::vulkan::GenReflect(std::span<const std::vector<unsigned>> codes,
     return true;
 }
 
-void sr::vulkan::InitProcess() { glslang::InitializeProcess(); }
-void sr::vulkan::FinalizeProcess() { glslang::FinalizeProcess(); }
+// glslang's process-wide symbol tables are torn down by FinalizeProcess.
+// Callers wrap every compile in Init/Finalize, which is fine in a one-shot
+// renderer process but corrupts state in the long-lived lock-screen
+// extension once it loads a second scene. Initialize once, never finalize.
+void sr::vulkan::InitProcess() {
+    static std::once_flag once;
+    std::call_once(once, [] { glslang::InitializeProcess(); });
+}
+void sr::vulkan::FinalizeProcess() {}
 
 namespace
 {
